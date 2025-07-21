@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Now Playing</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 10px;
+      font-family: 'Lilita One', sans-serif !important;
+      text-shadow: 2px 2px 2px black !important;
+      font-weight: normal !important;
+      font-size: 42px;
+      color: white;
+      background: transparent;
+    }
+
+    /* Контейнер для трека и обложки */
+    .track-container {
+      display: flex;
+      align-items: center;
+      max-width: fit-content;
+      transform: translateX(0);
+      transition: transform 1.0s ease-in-out;
+    }
+
+    /* Анимация: уезжание влево */
+    .track-container.slide-out {
+      transform: translateX(-120%);
+    }
+
+    /* Анимация: въезжание справа */
+    .track-container.slide-in {
+      transform: translateX(0);
+    }
+
+    /* Стили для названия трека */
+    #track {
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px 20px;
+      border-radius: 32px;
+      margin-left: 10px; /* Отступ между обложкой и текстом */
+    }
+
+    /* Стили для обложки */
+    #cover {
+      max-height: 112px;
+      border-radius: 8px;
+      display: none; /* Скрыт по умолчанию */
+      object-fit: cover;
+    }
+    #cover[src=""], #cover:not([src]) {
+      background-image: url('file:///C:/Program Files/OBS-Studio-31.0.3-Windows/album_cover.png'); /* URL плейсхолдера */
+      max-height: cover;
+      background-size: cover;
+      background-position: center;
+      display: block; /* Показываем, если src пустой */
+    }
+  </style>
+</head>
+<body>
+  <div class="track-container">
+    <img id="cover" src="" alt="?">
+    <div id="track">⏳ Загрузка трека...</div>
+  </div>
+  <script>
+    let ws;
+    let lastTrack = null; // Хранит последнее название трека
+    let lastThumbnail = null; // Хранит последнюю обложку
+
+    function connectWebSocket() {
+      ws = new WebSocket('ws://127.0.0.1:8080'); // Убедитесь, что порт совпадает
+
+      ws.onopen = () => {
+        console.log('Подключено к WebSocket Server Streamer.bot, состояние:', ws.readyState);
+        document.getElementById('track').textContent = '⏹ Ожидание трека...';
+
+        // Подписка на событие Custom:CodeEvent
+        ws.send(JSON.stringify({
+          request: 'Subscribe',
+          events: {
+            Custom: ['CodeEvent']
+          },
+          id: 'track_update_subscription'
+        }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          console.log('Сырые данные:', event.data);
+          const data = JSON.parse(event.data);
+          console.log('Получено сообщение:', data);
+
+          // Проверка ответа на подписку
+          if (data.request === 'Subscribe' && data.id === 'track_update_subscription') {
+            if (data.status === 'ok') {
+              console.log('Успешно подписано на Custom:CodeEvent события');
+            } else {
+              console.error('Ошибка подписки:', data.error);
+              document.getElementById('track').textContent = '⚠ Ошибка подписки: ' + data.error;
+            }
+            return;
+          }
+
+          // Обработка данных трека
+          if (data.event && data.event.source === 'Custom' && data.event.type === 'CodeEvent' && data.data && data.data.eventName === 'track_update' && data.data.args) {
+            const trackData = data.data.args;
+            if (trackData.id === 'track_update' && trackData.track) {
+              // Проверка, изменились ли трек или обложка
+              if (trackData.track !== lastTrack || trackData.thumbnail !== lastThumbnail) {
+                const trackContainer = document.querySelector('.track-container');
+                const cover = document.getElementById('cover');
+                const track = document.getElementById('track');
+
+                // Запуск анимации: уезжание влево
+                trackContainer.classList.add('slide-out');
+
+                // Задержка перед обновлением контента и въездом справа
+                setTimeout(() => {
+                  // Обновление контента
+                  track.textContent = trackData.track;
+                  cover.src = trackData.thumbnail || ''; /* Пустой src для плейсхолдера */
+                  cover.style.display = 'block'; /* Всегда показываем обложку */
+                  
+                  // Обновление последних значений
+                  lastTrack = trackData.track;
+                  lastThumbnail = trackData.thumbnail;
+
+                  // Удаление класса уезжания и добавление въезда
+                  trackContainer.classList.remove('slide-out');
+                  trackContainer.classList.add('slide-in');
+                }, 1000); // Длительность анимации уезжания (0.5s)
+
+                // Удаление класса въезда после завершения анимации
+                setTimeout(() => {
+                  trackContainer.classList.remove('slide-in');
+                }, 2000); // Общая длительность (0.5s уезжание + 0.5s въезд)
+              } else {
+                console.log('Трек не изменился, анимация не запускается:', trackData);
+              }
+            } else {
+              console.log('Сообщение без поля track или id:', trackData);
+            }
+          } else {
+            console.log('Сообщение не соответствует событию Custom:track_update:', data);
+          }
+        } catch (e) {
+          console.error('Ошибка обработки сообщения:', e);
+          document.getElementById('track').textContent = '⚠ Ошибка';
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('Ошибка WebSocket:', error);
+        document.getElementById('track').textContent = '⚠ Ошибка WebSocket';
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket соединение закрыто:', event.code, event.reason);
+        document.getElementById('track').textContent = 'Заказ музыки на паузе ⏹️';
+        setTimeout(() => {
+          console.log('Попытка переподключения...');
+          connectWebSocket();
+        }, 5000);
+      };
+    }
+
+    connectWebSocket();
+  </script>
+</body>
+</html>

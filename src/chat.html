@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Twitch Chat with Animations</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      overflow: hidden; /* Убираем прокрутку */
+    }
+
+    /* Стили для iframe */
+    #twitch-chat {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* Ваш CSS для чата */
+    .chat_container {
+      padding: 4px;
+      display: flex;
+      flex-direction: column; /* Вертикальное расположение сообщений */
+    }
+
+    .colon {
+      display: none;
+    }
+
+    .badge {
+      width: auto;
+      height: auto;
+      margin-left: 4px;
+      max-width: 42px;
+      max-height: 42px;
+    }
+
+    .emote {
+      width: auto;
+      height: auto;
+      max-width: 42px;
+      max-height: 42px;
+      margin-left: 4px;
+    }
+
+    .chat_line {
+      background-color: rgba(3, 9, 22, 0.6) !important;
+      margin-top: 16px !important;
+      font-family: 'Lilita One', sans-serif !important;
+      text-shadow: 2px 2px 2px black !important;
+      font-weight: normal !important;
+      padding: 10px 18px !important;
+      border-radius: 34px !important;
+      box-shadow: 0px 0px 4px rgb(49, 64, 96) !important;
+      -webkit-text-stroke: 0px !important;
+      font-size: 42px;
+      letter-spacing: 1px;
+      transform: translateX(-100%); /* Начинаем слева */
+      transition: transform 0.5s ease-in-out, margin-top 0.5s ease-in-out; /* Анимация для въезда и сдвига вверх */
+    }
+
+    /* Анимация: въезд слева */
+    .chat_line.slide-in {
+      transform: translateX(0);
+    }
+
+    /* Анимация: уезжание влево */
+    .chat_line.slide-out {
+      transform: translateX(-100%);
+    }
+
+    .nick {
+      margin-left: 4px;
+      font-weight: normal !important;
+    }
+
+    .message {
+      margin-left: 8px;
+      color: #e7eef5;
+    }
+  </style>
+</head>
+<body>
+  <iframe id="twitch-chat" src="https://giambaj.it/twitch/jchat/v2/?channel=greed_ik&fade=30&bots=true"></iframe>
+  <script>
+    // Дождитесь загрузки iframe
+    const iframe = document.getElementById('twitch-chat');
+    iframe.onload = () => {
+      try {
+        const chatDocument = iframe.contentDocument || iframe.contentWindow.document;
+        if (!chatDocument) {
+          console.error('Не удалось получить доступ к содержимому iframe (CORS)');
+          return;
+        }
+
+        const chatContainer = chatDocument.querySelector('.chat_container');
+        if (!chatContainer) {
+          console.error('Контейнер чата (.chat_container) не найден');
+          return;
+        }
+
+        const observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            if (mutation.addedNodes.length) {
+              mutation.addedNodes.forEach((node) => {
+                if (node.classList && node.classList.contains('chat_line')) {
+                  // Анимация въезда для нового сообщения
+                  node.classList.add('slide-in');
+                  setTimeout(() => {
+                    node.classList.remove('slide-in');
+                  }, 500); // Длительность анимации въезда
+
+                  // Плавный сдвиг вверх для существующих сообщений
+                  const chatLines = chatContainer.querySelectorAll('.chat_line');
+                  chatLines.forEach((line, index) => {
+                    if (index < chatLines.length - 1) { // Пропускаем новое сообщение
+                      line.style.transition = 'margin-top 0.5s ease-in-out';
+                      line.style.marginTop = `${parseInt(line.style.marginTop || 16) - 58}px`; // Сдвиг на высоту .chat_line (42px шрифт + 16px margin)
+                    }
+                  });
+
+                  // Удаление старых сообщений с анимацией уезжания
+                  if (chatLines.length > 5) { // Ограничение на 5 сообщений
+                    const oldestLine = chatLines[0];
+                    oldestLine.classList.add('slide-out');
+                    setTimeout(() => {
+                      oldestLine.remove();
+                    }, 500); // Удаление после анимации
+                  }
+                }
+              });
+            }
+          });
+        });
+
+        // Наблюдение за добавлением новых узлов в .chat_container
+        observer.observe(chatContainer, { childList: true });
+        console.log('MutationObserver запущен для отслеживания новых сообщений');
+      } catch (e) {
+        console.error('Ошибка при доступе к iframe или настройке MutationObserver:', e);
+      }
+    };
+  </script>
+</body>
+</html>
